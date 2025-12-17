@@ -200,6 +200,13 @@ function stopAIWeeklyStatus() {
   }
 }
 
+function formatBottleTime(ts) {
+  if (!ts) return '';
+  const date = new Date(ts);
+  const pad = (num) => String(num).padStart(2, '0');
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 async function sendMoodBottle(content, emotion) {
   const trimmed = (content || '').trim();
   if (!trimmed || !emotion) return;
@@ -279,6 +286,56 @@ function renderBottle(bottle) {
   requestAnimationFrame(() => display.classList.add('floating'));
 }
 
+function renderMyBottles(bottles = []) {
+  const listEl = document.getElementById('myBottlesList');
+  const countEl = document.getElementById('myBottleCount');
+  if (countEl) {
+    countEl.textContent = `共 ${bottles.length} 則`;
+  }
+  if (!listEl) return;
+  if (!bottles.length) {
+    listEl.innerHTML = "<div class='my-bottle-empty'>尚未投出任何漂流瓶</div>";
+    return;
+  }
+  const items = bottles
+    .map((bottle) => {
+      const emotion = bottle.emotion || '心情不明';
+      const content = bottle.content || '（這則漂流瓶沒有文字）';
+      const likes = typeof bottle.likes === 'number' ? bottle.likes : 0;
+      const replies = Array.isArray(bottle.replies)
+        ? bottle.replies.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0))
+        : [];
+      const repliesHtml = replies.length
+        ? `<div class="my-bottle-replies">
+            ${replies
+              .map(
+                (reply) =>
+                  `<div class="my-bottle-reply">
+                    ${reply.text || '（匿名留言）'}
+                    <span class="my-bottle-reply-time">${reply.ts ? formatBottleTime(reply.ts) : ''}</span>
+                  </div>`
+              )
+              .join('')}
+          </div>`
+        : `<div class="my-bottle-empty">還沒有留言，靜待下一位旅人。</div>`;
+      return `
+        <div class="my-bottle-item">
+          <div class="my-bottle-meta">
+            <span>${emotion}</span>
+            <span>${formatBottleTime(bottle.ts)}</span>
+          </div>
+          <div class="my-bottle-content">${content}</div>
+          <div class="my-bottle-stats">
+            <span>❤️ ${likes}</span>
+            <span>💬 ${replies.length}</span>
+          </div>
+          ${repliesHtml}
+        </div>`;
+    })
+    .join('');
+  listEl.innerHTML = items;
+}
+
 async function sendHug(bottleId) {
   if (!bottleId) return;
   try {
@@ -355,6 +412,7 @@ function stopBottleNotifications() {
     bottleWatcherUnsub = null;
   }
   userBottleState.clear();
+  renderMyBottles([]);
 }
 
 function startBottleNotifications() {
@@ -362,9 +420,13 @@ function startBottleNotifications() {
   stopBottleNotifications();
   const q = query(bottlesCollectionRef, where('author', '==', currentUser.uid));
   bottleWatcherUnsub = onSnapshot(q, (snapshot) => {
-    snapshot.docs.forEach((docSnap) => {
-      const data = docSnap.data() || {};
-      const prev = userBottleState.get(docSnap.id) || { likes: 0, replies: [] };
+    const bottles = snapshot.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    renderMyBottles(bottles);
+    bottles.forEach((bottle) => {
+      const data = bottle || {};
+      const prev = userBottleState.get(bottle.id) || { likes: 0, replies: [] };
       const likes = typeof data.likes === 'number' ? data.likes : 0;
       const replies = Array.isArray(data.replies) ? data.replies : [];
       if (prev.likes < likes) {
@@ -375,7 +437,7 @@ function startBottleNotifications() {
         const text = typeof latest?.text === 'string' ? latest.text : '匿名的暖心留言';
         showToast(`陌生人留下了鼓勵：「${text}」✨`);
       }
-      userBottleState.set(docSnap.id, { likes, replies: replies.slice() });
+      userBottleState.set(bottle.id, { likes, replies: replies.slice() });
     });
   }, (err) => console.error('bottle snapshot error', err));
 }
