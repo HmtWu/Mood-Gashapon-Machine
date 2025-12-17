@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登入 | 心情扭蛋機</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Noto Sans TC", sans-serif;
+      background-color: #f5f0ff;
+      background-image: url('assets/gacha-bg.png');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 360px;
+      background: rgba(255,255,255,.75);
+      padding: 28px;
+      border-radius: 18px;
+      box-shadow: 0 20px 45px rgba(108,92,231,.2);
+      border: 1px solid rgba(255,255,255,.4);
+      backdrop-filter: blur(8px);
+    }
+    h2 { margin: 0 0 16px; text-align: center; }
+    input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 12px; border: 1px solid #cfcfcf; font-size: 15px; }
+    button { width: 100%; padding: 12px; margin-top: 12px; border: none; border-radius: 12px; background: #6c5ce7; color: white; font-weight: bold; cursor: pointer; }
+    button:hover { opacity: .9; }
+    .msg { color: #c00; font-size: 13px; min-height: 18px; text-align: center; margin-top: 10px; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; background: #fdfdfd; }
+    .msg:empty { padding: 0; border: none; background: transparent; min-height: 0; }
+    .diagnose { margin-top: 16px; font-size: 13px; color: #333; background: #fafafa; border-radius: 10px; padding: 10px; border: 1px solid #ddd; }
+    .ok { color: #0a0; }
+    .fail { color: #c00; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>登入帳號</h2>
+    <input id="email" type="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="密碼" />
+    <div class="msg" id="msg"></div>
+    <button id="loginBtn">登入</button>
+    <button id="signupBtn" style="background:#4dabf7">註冊新帳號</button>
+
+    <!-- 🔍 自動診斷結果會顯示在這裡 -->
+    <div class="diagnose" id="diagnose">檢查 Firebase 連線中...</div>
+  </div>
+
+  <script type="module">
+    // === 匯入 Firebase SDK ===
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import { 
+      getAuth, 
+      setPersistence, 
+      browserLocalPersistence, 
+      signInWithEmailAndPassword, 
+      createUserWithEmailAndPassword,
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
+
+    // === Firebase 設定（與 app.js 相同）===
+    const firebaseConfig = {
+      apiKey: "AIzaSyCcbtsjKSFRBg66x-nVyOB0wljwilxTVqY",
+      authDomain: "mood-gacha.firebaseapp.com",
+      projectId: "mood-gacha",
+      storageBucket: "mood-gacha.appspot.com",
+      messagingSenderId: "439343502117",
+      appId: "1:439343502117:web:a09add8afb9de07ed5c0cc",
+      measurementId: "G-7HCLV1Y6H8"
+    };
+
+    // 初始化 Firebase（避免重複）
+    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const diagnoseBox = document.getElementById("diagnose");
+
+    // 🔍 自動診斷連線狀態
+    async function testFirebaseConnection() {
+      try {
+        const testEmail = "diagnostic@test.example.com";
+        const testPass = "abc12345";
+        // 這裡只是測試請求，預期會失敗但能回傳錯誤代表連線成功
+        await createUserWithEmailAndPassword(auth, testEmail, testPass);
+        diagnoseBox.innerHTML = "✅ <span class='ok'>Firebase 連線成功：設定正確。</span>";
+      } catch (e) {
+        // 根據錯誤類型顯示
+        if (e.code === "auth/email-already-in-use") {
+          diagnoseBox.innerHTML = "✅ <span class='ok'>Firebase 連線成功：專案設定正確。</span>";
+        } else if (e.code === "auth/invalid-api-key") {
+          diagnoseBox.innerHTML = "❌ <span class='fail'>無效的 API Key，請重新從 Firebase Console 複製 CDN config。</span>";
+        } else if (e.code === "auth/network-request-failed") {
+          diagnoseBox.innerHTML = "⚠️ <span class='fail'>無法連線到 Firebase，可能網域未授權或網路被擋。</span>";
+        } else if (e.code === "auth/invalid-credential") {
+          diagnoseBox.innerHTML = "⚠️ <span class='fail'>連線成功但登入被拒，請檢查 Authentication 設定。</span>";
+        } else {
+          diagnoseBox.innerHTML = "⚠️ 錯誤代碼：" + e.code + "<br><span class='fail'>" + e.message + "</span>";
+        }
+        console.warn("[診斷結果]", e.code, e.message);
+      }
+    }
+
+    // 執行測試
+    testFirebaseConnection();
+
+    // ✅ 若已登入則跳首頁
+    onAuthStateChanged(auth, (user) => {
+    // 如果登入狀態確定但已在 index.html 就不要再跳
+        if (user && !window.location.href.includes("index.html")) {
+            console.log("✅ 已登入，導向首頁");
+            window.location.replace("index.html");
+        }
+    });
+
+
+    // ✅ 保持登入狀態
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => {
+        // 登入事件
+        document.getElementById("loginBtn").onclick = async () => {
+          const email = document.getElementById("email").value.trim();
+          const pw = document.getElementById("password").value.trim();
+          const msg = document.getElementById("msg");
+          msg.textContent = "";
+          try {
+            await signInWithEmailAndPassword(auth, email, pw);
+            msg.textContent = "登入成功！";
+            window.location.href = "index.html";
+          } catch (e) {
+            msg.textContent = "登入失敗：" + e.message;
+          }
+        };
+
+        // 註冊事件
+        document.getElementById("signupBtn").onclick = async () => {
+          const email = document.getElementById("email").value.trim();
+          const pw = document.getElementById("password").value.trim();
+          const msg = document.getElementById("msg");
+          msg.textContent = "";
+          try {
+            await createUserWithEmailAndPassword(auth, email, pw);
+            msg.textContent = "註冊成功！請重新登入。";
+          } catch (e) {
+            msg.textContent = "註冊失敗：" + e.message;
+          }
+        };
+      })
+      .catch((error) => {
+        console.error("❌ 設定登入持久化失敗", error);
+      });
+  </script>
+</body>
+</html>

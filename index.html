@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>心情扭蛋機</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+</head>
+<body>
+  <nav id="topNav">
+    <div class="nav-left">
+      <div class="app-title">心情扭蛋機，扭進你的心</div>
+      <div class="badge" id="streak">連續天數 0</div>
+    </div>
+    <div class="nav-center">
+      <button class="nav-btn active" data-target="sec-gacha">🏠 轉扭蛋</button>
+      <button class="nav-btn" data-target="sec-stats">📊 心情概覽</button>
+      <button class="nav-btn" data-target="sec-favs">📜 療癒清單</button>
+      <button class="nav-btn" data-target="sec-logs">✍️ 本週紀錄</button>
+      <button class="nav-btn" data-target="sec-diary">📝 心情日記</button>
+    </div>
+    <div class="nav-right user-info">
+      <span id="userEmail" class="user-email">🔐 </span>
+      <button class="btn logout-btn" onclick="logout()">登出</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <section id="sec-gacha" class="page-section active">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="section-title">準備好迎接新任務！</h2>
+          <p class="section-subtext">選擇心情、轉動扭蛋，AI 會為你帶來最適合的療癒任務。</p>
+        </div>
+        <p>扭蛋機會根據你選擇的心情與描述，生成貼近當下狀態的小任務。保持呼吸、靜心感受，讓這場儀式感陪你度過一整天。</p>
+        <div class="center" style="margin-top: 20px;">
+          <button id="openModal" class="btn primary btn-main">🎲 進入扭蛋機</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-stats" class="page-section">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="section-title">這週心情概覽</h2>
+          <p class="section-subtext">觀察心情波動，了解自己的節奏</p>
+        </div>
+        <div class="bars">
+          <div class="bar"><div class="label">完成任務數</div><div class="track"><div class="fill" id="barTasks"></div></div></div>
+          <div class="bar"><div class="label">壓力次數</div><div class="track"><div class="fill red" id="barRed"></div></div></div>
+          <div class="bar"><div class="label">焦慮次數</div><div class="track"><div class="fill blue" id="barBlue"></div></div></div>
+          <div class="bar"><div class="label">開心次數</div><div class="track"><div class="fill yellow" id="barYellow"></div></div></div>
+        </div>
+        <div class="footer">
+          <div class="small" id="weekRange"></div>
+          <div class="footer-actions">
+            <button class="btn primary" id="exportJPG">📸 儲存心情小卡</button>
+            <button class="btn ghost" id="exportData">匯出紀錄</button>
+            <button class="btn ghost" id="clear">清除資料</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sec-favs" class="page-section">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="section-title">我的療癒清單</h2>
+          <p class="section-subtext">收藏讓你覺得溫暖的任務</p>
+        </div>
+        <div class="list" id="favorites"></div>
+      </div>
+    </section>
+
+    <section id="sec-logs" class="page-section">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="section-title">本週紀錄</h2>
+          <p class="section-subtext">記下這週完成的所有療癒任務</p>
+        </div>
+        <button class="btn primary" id="generateWeeklyAI" style="margin-top: 10px; width: 100%;">✨ 生成本週心靈週報 (AI 分析)</button>
+        <div id="aiWeeklySummaryContainer" style="margin-top: 15px;"></div>
+        <div class="list" id="log"></div>
+      </div>
+    </section>
+
+    <section id="sec-diary" class="page-section">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="section-title">心情日記</h2>
+          <p class="section-subtext">回顧每次扭蛋前留下的心情描述</p>
+        </div>
+        <div class="diary-filters" id="diaryFilters">
+          <button type="button" class="filter-dot active" data-emotion="ALL">
+            <span class="dot all"></span>
+            <span class="label">全部</span>
+          </button>
+          <button type="button" class="filter-dot" data-emotion="壓力">
+            <span class="dot stress"></span>
+            <span class="label">壓力</span>
+          </button>
+          <button type="button" class="filter-dot" data-emotion="焦慮">
+            <span class="dot anxiety"></span>
+            <span class="label">焦慮</span>
+          </button>
+          <button type="button" class="filter-dot" data-emotion="開心">
+            <span class="dot happy"></span>
+            <span class="label">開心</span>
+          </button>
+          <button type="button" class="filter-dot" data-emotion="疲憊">
+            <span class="dot tired"></span>
+            <span class="label">疲憊</span>
+          </button>
+          <button type="button" class="filter-dot" data-emotion="迷茫">
+            <span class="dot lost"></span>
+            <span class="label">迷茫</span>
+          </button>
+          <button type="button" class="filter-dot" data-emotion="平靜">
+            <span class="dot calm"></span>
+            <span class="label">平靜</span>
+          </button>
+        </div>
+        <div class="list" id="diaryList"></div>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="global-panel pending-panel">
+    <div class="card pending-card floating-card">
+      <div class="card-header">
+        <h2 class="section-title">待完成任務</h2>
+        <p class="section-subtext">累積每個小任務，讓心情慢慢好起來</p>
+      </div>
+      <div id="pendingTasks"></div>
+    </div>
+  </section>
+
+  <!-- 🌀 扭蛋機 Modal -->
+      <div id="gachaModal" class="modal">
+        <div class="modal-content">
+          <span id="closeModal" class="close">&times;</span>
+      <h2 class="section-title">選心情 → 轉一下</h2>
+      <div class="emotions" id="emotionGrid">
+        <button class="btn chip red" data-emotion="壓力">紅 · 壓力</button>
+        <button class="btn chip blue" data-emotion="焦慮">藍 · 焦慮</button>
+        <button class="btn chip yellow" data-emotion="開心">黃 · 開心</button>
+        <button class="btn chip green" data-emotion="疲憊">綠 · 疲憊</button>
+        <button class="btn chip gray" data-emotion="迷茫">灰 · 迷茫</button>
+        <button class="btn chip teal" data-emotion="平靜">藍綠 · 平靜</button>
+      </div>
+      <div id="gachaAnim" class="gacha-anim" aria-hidden="true"></div>
+      <div class="diary-input-area">
+        <label for="moodDiary">✍️ 寫下你的心情小日記</label>
+        <textarea id="moodDiary" rows="4" placeholder="今天發生了什麼事？現在的感覺是..."></textarea>
+      </div>
+      <div class="description-input" style="margin-top: 15px; margin-bottom: 15px;">
+        <label for="emotionDescription" class="small">可選：描述一下你的心情（讓任務更個人化！）</label>
+        <textarea id="emotionDescription" rows="3" placeholder="例如：剛被老闆罵，覺得很沮喪..."></textarea>
+      </div>
+      <div class="spin">
+        <button id="spin" class="btn primary lg">轉一下</button>
+      </div>
+      <div id="loading" class="loading" style="display:none;">
+        <div class="spinner"></div>
+        <p>AI 正在為你生成任務...</p>
+      </div>
+      <div id="longWait" class="loading" style="display:none;">
+        <div class="spinner"></div>
+        <p>⏳ AI 正在努力生成中，請稍候...</p>
+      </div>
+      <div id="result" class="result" style="display:none;">
+        <div class="result-title" id="resultTitle"></div>
+        <div class="result-meta">
+          <span id="resultCat"></span>｜
+          <span id="resultDesc"></span>
+        </div>
+        <div class="result-badge" id="resultBadge"></div>
+        <div class="result-actions">
+          <button id="reSpin" class="btn result-btn reject">✕ 換一顆</button>
+          <button id="closeAndCancel" class="btn result-btn confirm">✔ 扭到心坎了</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主程式 -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const spinBtn = document.getElementById("spin");
+      if (!spinBtn) return;
+      spinBtn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        if (spinBtn.disabled) return;
+        spinBtn.disabled = true;
+        try {
+          const appModule = await import("./app.js");
+          if (appModule && typeof appModule.handleSpin === "function") {
+            const resultData = await appModule.handleSpin();
+            if (resultData && appModule.showSpinResult) {
+              appModule.showSpinResult(resultData);
+            }
+          }
+        } catch (error) {
+          console.error("❌ 任務生成失敗:", error);
+          alert("AI 生成失敗，請稍後再試。");
+        } finally {
+          spinBtn.disabled = false;
+        }
+      });
+    });
+  </script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
