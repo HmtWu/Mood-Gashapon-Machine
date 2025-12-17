@@ -19,6 +19,7 @@
       <button class="nav-btn" data-target="sec-favs">📜 療癒清單</button>
       <button class="nav-btn" data-target="sec-logs">✍️ 本週紀錄</button>
       <button class="nav-btn" data-target="sec-diary">📝 心情日記</button>
+      <button class="nav-btn" data-target="sec-bottles">🌊 心情漂流瓶</button>
     </div>
     <div class="nav-right user-info">
       <span id="userEmail" class="user-email">🔐 </span>
@@ -125,6 +126,19 @@
       </div>
     </section>
 
+    <section id="sec-bottles" class="page-section">
+      <div class="card bottle-card">
+        <div class="card-header">
+          <h2 class="section-title">心情漂流瓶</h2>
+          <p class="section-subtext">撈起陌生人的心情，送出一個抱抱</p>
+        </div>
+        <button class="btn primary bottle-btn" id="pullBottle">🌊 撈起瓶子</button>
+        <div id="bottleDisplay" class="bottle-display">
+          <p class="small">海面暫時平靜，先投下你的第一則心情吧！</p>
+        </div>
+      </div>
+    </section>
+
   </div>
 
   <section class="global-panel pending-panel">
@@ -154,6 +168,13 @@
       <div class="diary-input-area">
         <label for="moodDiary">✍️ 寫下你的心情小日記</label>
         <textarea id="moodDiary" rows="4" placeholder="今天發生了什麼事？現在的感覺是..."></textarea>
+      </div>
+      <div class="bottle-share-toggle">
+        <label>
+          <input type="checkbox" id="sendToBottle" />
+          匿名發送至心情漂流瓶，分享這段心情
+        </label>
+        <div class="small">（內容將以匿名方式被撈起，帶給陌生人一點陪伴）</div>
       </div>
       <div class="description-input" style="margin-top: 15px; margin-bottom: 15px;">
         <label for="emotionDescription" class="small">可選：描述一下你的心情（讓任務更個人化！）</label>

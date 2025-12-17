@@ -2,7 +2,7 @@
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
 import { getAuth, onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion }
+import { getFirestore, doc, getDoc, setDoc, updateDoc, arrayUnion, collection, addDoc, getDocs, query, orderBy, limit, increment, where, onSnapshot }
   from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
 // ⚙️ Firebase Config
@@ -20,12 +20,14 @@ const firebaseConfig = {
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const bottlesCollectionRef = collection(db, 'bottles');
 
 // === AI 後端 API ===
 const BACKEND_URL = "https://cloud-xi08.onrender.com";
 
 // === 全域狀態 ===
 let userDocRef = null;
+let currentUser = null;
 let userData = { logs: [], favs: [], pending: [] };
 let chosenEmotion = null;
 let uiInitialized = false;
@@ -35,6 +37,9 @@ let lastDiaryText = '';
 let diaryFilter = 'ALL';
 let lastGeneratedTaskTs = null;
 let shouldRequestVariant = false;
+let currentBottle = null;
+let bottleWatcherUnsub = null;
+const userBottleState = new Map();
 
 const MOOD_TYPES = ['壓力', '焦慮', '開心', '疲憊', '迷茫', '平靜'];
 const MOOD_STYLES = {
@@ -70,6 +75,14 @@ const getDiaryText = (entry) => {
   if (diary) return diary;
   const note = typeof entry.note === 'string' ? entry.note.trim() : '';
   return note;
+};
+const isBottleShareEnabled = () => {
+  const checkbox = $('#sendToBottle');
+  return checkbox ? checkbox.checked : false;
+};
+const resetBottleShareToggle = () => {
+  const checkbox = $('#sendToBottle');
+  if (checkbox) checkbox.checked = false;
 };
 
 function createSafeAudio(src) {
@@ -187,6 +200,186 @@ function stopAIWeeklyStatus() {
   }
 }
 
+async function sendMoodBottle(content, emotion) {
+  const trimmed = (content || '').trim();
+  if (!trimmed || !emotion) return;
+  try {
+    await addDoc(bottlesCollectionRef, {
+      content: trimmed,
+      emotion,
+      ts: Date.now(),
+      likes: 0,
+      author: currentUser?.uid || null,
+      replies: []
+    });
+  } catch (err) {
+    console.warn('送出漂流瓶失敗', err);
+  }
+}
+
+async function pickRandomBottle() {
+  const display = $('#bottleDisplay');
+  if (!display) return;
+  display.innerHTML = '<div class="bottle-loading">🌊 正在撈取漂流瓶...</div>';
+  try {
+    const q = query(bottlesCollectionRef, orderBy('ts', 'desc'), limit(20));
+    const snapshot = await getDocs(q);
+    const bottles = snapshot.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+      .filter((bottle) => bottle.author !== currentUser?.uid);
+    if (!bottles.length) {
+      currentBottle = null;
+      display.innerHTML = "<div class='bottle-empty'>海上目前只有你自己的瓶子，靜待其他漂流瓶漂過來吧～</div>";
+      return;
+    }
+    const randomBottle = bottles[Math.floor(Math.random() * bottles.length)];
+    renderBottle(randomBottle);
+  } catch (err) {
+    console.error('撈取漂流瓶失敗', err);
+    display.innerHTML = "<div class='bottle-error'>撈瓶子失敗，稍後再試。</div>";
+  }
+}
+
+function renderBottle(bottle) {
+  const display = $('#bottleDisplay');
+  if (!display) return;
+  if (!bottle) {
+    display.innerHTML = "<div class='bottle-empty'>海上暫時沒瓶子，先寫一則日記試試！</div>";
+    currentBottle = null;
+    return;
+  }
+  currentBottle = bottle;
+  display.innerHTML = `
+    <div class="bottle-glass">
+      <div class="bottle-emotion">${bottle.emotion || '未知心情'}</div>
+      <div class="bottle-content">${bottle.content || '（這則漂流瓶沒有文字）'}</div>
+      <div class="bottle-footer">
+        <div class="bottle-likes">❤️ ${bottle.likes || 0}</div>
+        <button class="btn bottle-hug-btn" data-action="hug-bottle">給予抱抱</button>
+      </div>
+      <div class="bottle-reply-area">
+        <textarea class="bottle-reply-input" placeholder="寫下你的鼓勵..."></textarea>
+        <button class="btn bottle-reply-btn" data-action="send-reply">送出鼓勵</button>
+      </div>
+      <div class="bottle-message">撈起這顆漂流瓶，讓我們互相取暖。</div>
+    </div>`;
+  const hugBtn = display.querySelector('[data-action="hug-bottle"]');
+  if (hugBtn) {
+    hugBtn.addEventListener('click', () => sendHug(bottle.id));
+  }
+  const replyBtn = display.querySelector('[data-action="send-reply"]');
+  if (replyBtn) {
+    replyBtn.addEventListener('click', () => {
+      const input = display.querySelector('.bottle-reply-input');
+      replyToBottle(bottle.id, input?.value || '');
+      if (input) input.value = '';
+    });
+  }
+  display.classList.remove('floating');
+  requestAnimationFrame(() => display.classList.add('floating'));
+}
+
+async function sendHug(bottleId) {
+  if (!bottleId) return;
+  try {
+    const bottleRef = doc(db, 'bottles', bottleId);
+    await updateDoc(bottleRef, { likes: increment(1) });
+    if (currentBottle && currentBottle.id === bottleId) {
+      currentBottle.likes = (currentBottle.likes || 0) + 1;
+      renderBottle(currentBottle);
+    }
+    showBottleMessage('你送出了一個溫暖的抱抱！');
+  } catch (err) {
+    console.error('送抱抱失敗', err);
+    showBottleMessage('抱抱暫時送不出去，稍候再試。');
+  }
+}
+
+function showBottleMessage(text) {
+  const messageEl = document.querySelector('#bottleDisplay .bottle-message');
+  if (messageEl) {
+    messageEl.textContent = text;
+  }
+}
+
+async function replyToBottle(bottleId, text) {
+  if (!bottleId) return;
+  const trimmed = (text || '').trim();
+  if (!trimmed) {
+    showBottleMessage('寫點鼓勵再送出吧！');
+    return;
+  }
+  try {
+    const payload = { text: trimmed, ts: Date.now() };
+    const bottleRef = doc(db, 'bottles', bottleId);
+    await updateDoc(bottleRef, {
+      replies: arrayUnion(payload),
+      likes: increment(1)
+    });
+    if (currentBottle && currentBottle.id === bottleId) {
+      currentBottle.likes = (currentBottle.likes || 0) + 1;
+      if (!Array.isArray(currentBottle.replies)) currentBottle.replies = [];
+      currentBottle.replies = [...currentBottle.replies, payload];
+      renderBottle(currentBottle);
+    }
+    showBottleMessage('鼓勵已漂出！');
+  } catch (err) {
+    console.error('送出鼓勵失敗', err);
+    showBottleMessage('暫時無法送出鼓勵，稍後再試。');
+  }
+}
+
+function showToast(message) {
+  if (!message) return;
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast-notification';
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('visible'));
+  setTimeout(() => {
+    toast.classList.remove('visible');
+    toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+  }, 5000);
+}
+
+function stopBottleNotifications() {
+  if (bottleWatcherUnsub) {
+    bottleWatcherUnsub();
+    bottleWatcherUnsub = null;
+  }
+  userBottleState.clear();
+}
+
+function startBottleNotifications() {
+  if (!currentUser) return;
+  stopBottleNotifications();
+  const q = query(bottlesCollectionRef, where('author', '==', currentUser.uid));
+  bottleWatcherUnsub = onSnapshot(q, (snapshot) => {
+    snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const prev = userBottleState.get(docSnap.id) || { likes: 0, replies: [] };
+      const likes = typeof data.likes === 'number' ? data.likes : 0;
+      const replies = Array.isArray(data.replies) ? data.replies : [];
+      if (prev.likes < likes) {
+        showToast('有人給了你的漂流瓶一個大大的抱抱 ❤️');
+      }
+      if (replies.length > prev.replies.length) {
+        const latest = replies[replies.length - 1];
+        const text = typeof latest?.text === 'string' ? latest.text : '匿名的暖心留言';
+        showToast(`陌生人留下了鼓勵：「${text}」✨`);
+      }
+      userBottleState.set(docSnap.id, { likes, replies: replies.slice() });
+    });
+  }, (err) => console.error('bottle snapshot error', err));
+}
+
 async function playGachaSpinAnimation() {
   const anim = await ensureGachaAnimation();
   if (anim) {
@@ -213,6 +406,7 @@ function showPage(pageId) {
 // === 等待 DOM 完成後綁定 ===
 document.addEventListener('DOMContentLoaded', () => {
   onAuthStateChanged(auth, async (user) => {
+    currentUser = user || null;
     const emailEl = document.getElementById('userEmail');
     if (emailEl) {
       emailEl.textContent = user?.email ? `🔐 ${user.email}` : '🔐 使用者未顯示信箱';
@@ -221,6 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const isLoginPage = window.location.pathname.endsWith('login.html');
 
     if (!user) {
+      stopBottleNotifications();
       if (!isLoginPage) {
         window.location.href = 'login.html';
       }
@@ -245,6 +440,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupUIBindings();
     updateAll();
     showPage(currentPage);
+    pickRandomBottle();
+    startBottleNotifications();
   });
 });
 
@@ -329,6 +526,12 @@ function setupUIBindings() {
     closeAndCancelBtn.addEventListener('click', () => closeAndArchiveLast());
   }
 
+  const pullBottleBtn = $('#pullBottle');
+  if (pullBottleBtn && !pullBottleBtn.dataset.bound) {
+    pullBottleBtn.dataset.bound = 'true';
+    pullBottleBtn.addEventListener('click', () => pickRandomBottle());
+  }
+
   const aiWeeklyBtn = $('#generateWeeklyAI');
   if (aiWeeklyBtn && !aiWeeklyBtn.dataset.bound) {
     aiWeeklyBtn.dataset.bound = 'true';
@@ -391,6 +594,10 @@ export async function handleSpin() {
   const diaryEntry = getDiaryInput();
   lastDescription = description;
   lastDiaryText = diaryEntry;
+  const shareToBottle = isBottleShareEnabled();
+  if (shareToBottle && diaryEntry) {
+    sendMoodBottle(diaryEntry, chosenEmotion);
+  }
   const loadingEl = $('#loading');
   const resultEl = $('#result');
   if (loadingEl) loadingEl.style.display = 'block';
@@ -535,6 +742,7 @@ export async function showSpinResult(resultData) {
   const diaryInput = $('#moodDiary');
   if (diaryInput) diaryInput.value = '';
   lastDiaryText = '';
+  resetBottleShareToggle();
   updateAll();
 }
 
@@ -864,6 +1072,7 @@ async function handleRespin() {
   const descInput = $('#emotionDescription');
   if (descInput) descInput.value = '';
   lastDescription = '';
+  resetBottleShareToggle();
   shouldRequestVariant = true;
 
   if (lastGeneratedTaskTs) {
@@ -887,6 +1096,7 @@ async function closeAndArchiveLast() {
   const diaryInput = $('#moodDiary');
   if (diaryInput) diaryInput.value = '';
   lastDiaryText = '';
+  resetBottleShareToggle();
   if (resultEl) resultEl.style.display = 'none';
   if (loadingEl) loadingEl.style.display = 'none';
 
